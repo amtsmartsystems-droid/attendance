@@ -16,6 +16,7 @@ import '../core/theme/app_theme.dart';
 import '../widgets/nfc_scan_button.dart';
 import '../widgets/status_card.dart';
 import '../widgets/history_tile.dart';
+import 'leave_request_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -136,6 +137,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             scanState: provider.scanState,
                             onScan: () => _handleScanButton(context, provider),
                             onStop: () => provider.stopScan(),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // --- زر تقديم الإجازة ---
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent.withOpacity(0.2),
+                          foregroundColor: Colors.blueAccent,
+                          elevation: 0,
+                          minimumSize: const Size(double.infinity, 50),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: Colors.blueAccent),
+                          ),
+                        ),
+                        icon: const Icon(Icons.assignment_ind),
+                        label: const Text('تقديم طلب إجازة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Cairo')),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const LeaveRequestScreen()),
                           );
                         },
                       ),

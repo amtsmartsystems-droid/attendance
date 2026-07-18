@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'employee_management_screen.dart';
 import 'attendance_screen.dart';
+import 'schedules_screen.dart';
+import 'leaves_screen.dart';
 
 void main() {
   runApp(const AdminDashboardApp());
@@ -47,6 +49,8 @@ class _MainScreenState extends State<MainScreen> {
     const DashboardScreen(),
     const AttendanceScreen(),
     const EmployeeManagementScreen(),
+    const SchedulesScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
+    const LeavesScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
   ];
 
   @override
@@ -78,6 +82,16 @@ class _MainScreenState extends State<MainScreen> {
                 icon: Icon(Icons.people_outline),
                 selectedIcon: Icon(Icons.people, color: Color(0xFF00E5FF)),
                 label: Text('الموظفين'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.schedule_outlined),
+                selectedIcon: Icon(Icons.schedule, color: Color(0xFF00E5FF)),
+                label: Text('الجداول'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.assignment_ind_outlined),
+                selectedIcon: Icon(Icons.assignment_ind, color: Color(0xFF00E5FF)),
+                label: Text('الإجازات'),
               ),
             ],
           ),
@@ -144,6 +158,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         backgroundColor: const Color(0xFF162032),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: Stack(
+              children: [
+                const Icon(Icons.notifications),
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                    child: const Text('2', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                  ),
+                )
+              ],
+            ),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('أحمد محمد تأخر عن الدوام | محمد علي قدم طلب إجازة')),
+              );
+            },
+            tooltip: 'الإشعارات',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: fetchData,
