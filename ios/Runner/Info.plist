@@ -1,0 +1,73 @@
+<!--
+    =====================================================
+    ملف: Info.plist
+    الوصف: إعدادات التطبيق على iOS
+           يتضمن وصف استخدام NFC المطلوب من Apple
+    =====================================================
+-->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ✅ وصف استخدام NFC - مطلوب من Apple -->
+    <!-- هذا النص يظهر للمستخدم عند طلب صلاحية NFC -->
+    <key>NFCReaderUsageDescription</key>
+    <string>يستخدم نظام AMT حساس NFC لقراءة بطاقة الحضور الخاصة بك بشكل آمن عند اللمس المباشر.</string>
+
+    <!-- أنواع علامات NFC المدعومة -->
+    <key>com.apple.developer.nfc.readersession.formats</key>
+    <array>
+        <string>NDEF</string>
+    </array>
+
+    <!-- إعداد شبكة ATS للسماح باتصال HTTPS فقط -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- حظر كل الاتصالات غير الآمنة (HTTP) -->
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+        <!-- السماح بـ HTTPS فقط -->
+        <key>NSAllowsLocalNetworking</key>
+        <false/>
+    </dict>
+
+    <!-- اسم التطبيق -->
+    <key>CFBundleName</key>
+    <string>نظام AMT للحضور</string>
+
+    <!-- معرف التطبيق -->
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+    <!-- رقم الإصدار -->
+    <key>CFBundleShortVersionString</key>
+    <string>$(FLUTTER_BUILD_NAME)</string>
+    <key>CFBundleVersion</key>
+    <string>$(FLUTTER_BUILD_NUMBER)</string>
+
+    <!-- الحزمة -->
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- دعم توجهات الشاشة -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <!-- عمودي فقط -->
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+
+    <!-- إخفاء شريط الحالة -->
+    <key>UIStatusBarHidden</key>
+    <false/>
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleLightContent</string>
+
+    <!-- دعم Flutter -->
+    <key>UIMainStoryboardFile</key>
+    <string>Main</string>
+    <key>NSPrincipalClass</key>
+    <string>FlutterApplication</string>
+    <key>io.flutter.embedded_views_preview</key>
+    <true/>
+</dict>
+</plist>
