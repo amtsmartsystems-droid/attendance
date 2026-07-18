@@ -28,6 +28,9 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+# استيراد المسارات الجديدة (Routers)
+from routers import schedules, leaves
+
 # ============================================================
 class EmployeeCreate(BaseModel):
     full_name: str
@@ -49,6 +52,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# تسجيل المسارات (Routers)
+app.include_router(schedules.router)
+app.include_router(leaves.router)
 
 # ── Supabase ─────────────────────────────────────────────
 SUPABASE_URL = os.getenv("SUPABASE_URL")
