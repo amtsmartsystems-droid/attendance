@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../core/theme/app_theme.dart';
 import '../core/config/app_config.dart';
+import '../services/nfc_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,50 +15,136 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _pinController = TextEditingController();
   final _storage = const FlutterSecureStorage();
   bool _isLoading = false;
+  
+  // State 0: Scan NFC, State 1: Select Name, State 2: Walk-in Form
+  int _currentStep = 0;
+  
+  // Scanned Tag Info
+  String? _scannedNfcUid;
+  List<dynamic> _maskedEmployees = [];
+  
+  // Fast Track Info
+  String? _selectedEmployeeId;
+  final _pinController = TextEditingController();
+  
+  // Walk-in Form Info
+  final _walkinNameController = TextEditingController();
+  final _walkinPhoneController = TextEditingController();
+  final _walkinPinController = TextEditingController();
 
-  Future<void> _verifyPin(String pin) async {
-    if (pin.isEmpty) return;
-    
+  Future<void> _startNfcScan() async {
     setState(() => _isLoading = true);
     
-    try {
-      // 1. توليد معرّف الجهاز
-      final deviceId = _generateDeviceId();
+    await NfcService().startNfcSession(
+      onSuccess: (result) async {
+        if (result.tagCode == null) return;
+        _scannedNfcUid = result.tagCode;
+        
+        try {
+          final response = await http.get(
+            Uri.parse('${AppConfig.backendUrl}/api/onboarding/list/$_scannedNfcUid'),
+          );
+          
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            setState(() {
+              _maskedEmployees = data['masked_employees'] ?? [];
+              _currentStep = 1; // Move to Select Name
+              _isLoading = false;
+            });
+          } else {
+            _showError('هذه البوابة غير مسجلة أو غير صالحة للربط');
+            setState(() => _isLoading = false);
+          }
+        } catch (e) {
+          _showError('خطأ في الاتصال بالسيرفر');
+          setState(() => _isLoading = false);
+        }
+      },
+      onError: (msg) {
+        _showError(msg);
+        setState(() => _isLoading = false);
+      },
+    );
+  }
 
-      // 2. إرسال طلب تسجيل الدخول للسيرفر
+  Future<void> _fastTrackLogin() async {
+    if (_selectedEmployeeId == null || _pinController.text.isEmpty) return;
+    
+    setState(() => _isLoading = true);
+    final deviceId = _generateDeviceId();
+    
+    try {
       final response = await http.post(
-        Uri.parse('${AppConfig.backendUrl}/api/employees/login'),
+        Uri.parse('${AppConfig.backendUrl}/api/onboarding/fast-track'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
-          'pin_code': pin,
+          'employee_id': _selectedEmployeeId,
+          'pin_code': _pinController.text.trim(),
           'device_id': deviceId,
         }),
       );
 
       final data = jsonDecode(response.body);
 
-      if (response.statusCode != 200) {
-        _showError(data['detail'] ?? 'خطأ في تسجيل الدخول');
-        setState(() => _isLoading = false);
-        return;
+      if (response.statusCode == 200) {
+        final emp = data['employee'];
+        await _storage.write(key: 'emp_id', value: emp['emp_id']);
+        await _storage.write(key: 'employee_uuid', value: emp['id']);
+        await _storage.write(key: 'full_name', value: emp['full_name']);
+        await _storage.write(key: 'device_id', value: deviceId);
+        
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        _showError(data['detail'] ?? 'الرمز السري غير صحيح أو الجهاز مربوط مسبقاً');
       }
+    } catch (e) {
+      _showError('حدث خطأ في الاتصال بالخادم');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-      // 3. الحفظ في التخزين الآمن
-      final empId = data['emp_id'];
-      final fullName = data['full_name'];
-      
-      await _storage.write(key: 'emp_id', value: empId);
-      await _storage.write(key: 'full_name', value: fullName);
-      await _storage.write(key: 'device_id', value: deviceId);
-      
-      if (!mounted) return;
-      
-      // 5. الدخول للتطبيق
-      Navigator.pushReplacementNamed(context, '/home');
-      
+  Future<void> _submitWalkIn() async {
+    if (_walkinNameController.text.isEmpty || _walkinPhoneController.text.isEmpty || _walkinPinController.text.isEmpty) {
+      _showError('يرجى تعبئة جميع الحقول');
+      return;
+    }
+    
+    setState(() => _isLoading = true);
+    final deviceId = _generateDeviceId();
+    
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/api/onboarding/walk-in'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'full_name': _walkinNameController.text.trim(),
+          'phone_number': _walkinPhoneController.text.trim(),
+          'pin_code': _walkinPinController.text.trim(),
+          'department': 'Walk-in / Guest',
+          'device_id': deviceId,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final emp = data['employee'];
+        await _storage.write(key: 'emp_id', value: emp['emp_id']);
+        await _storage.write(key: 'employee_uuid', value: emp['id']);
+        await _storage.write(key: 'full_name', value: emp['full_name']);
+        await _storage.write(key: 'device_id', value: deviceId);
+        
+        if (!mounted) return;
+        _showSuccess('تم إرسال طلبك للإدارة. يمكنك تسجيل الحضور فور الموافقة عليك!');
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        _showError(data['detail'] ?? 'خطأ في إرسال الطلب');
+      }
     } catch (e) {
       _showError('حدث خطأ في الاتصال بالخادم');
     } finally {
@@ -67,7 +154,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Cairo'))),
+      SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.red),
+    );
+  }
+
+  void _showSuccess(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg, style: const TextStyle(fontFamily: 'Cairo')), backgroundColor: Colors.green),
     );
   }
 
@@ -89,88 +182,139 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.security, size: 80, color: AppColors.primary),
-                const SizedBox(height: 20),
-                const Text(
-                  'تسجيل الدخول',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'يرجى إدخال الرمز السري أو مسح الباركود لربط جهازك بالنظام',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 40),
-                TextField(
-                  controller: _pinController,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 24, letterSpacing: 8, color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'الرمز السري (PIN)',
-                    hintStyle: const TextStyle(color: Colors.white30, letterSpacing: 0, fontSize: 16),
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.05),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: AppColors.primary),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: AppColors.secondary, width: 2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : () => _verifyPin(_pinController.text.trim()),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                    child: _isLoading 
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('دخول', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text('أو', style: TextStyle(color: AppColors.textSecondary)),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final pin = await Navigator.pushNamed(context, '/qr_scanner');
-                      if (pin != null && pin is String) {
-                        _pinController.text = pin;
-                        _verifyPin(pin);
-                      }
-                    },
-                    icon: const Icon(Icons.qr_code_scanner, color: AppColors.secondary),
-                    label: const Text('مسح رمز QR', style: TextStyle(fontSize: 18, color: AppColors.secondary)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: AppColors.secondary),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            child: _buildCurrentStep(),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildCurrentStep() {
+    if (_currentStep == 0) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.nfc, size: 80, color: AppColors.primary),
+          const SizedBox(height: 20),
+          const Text('نظام الدخول السريع', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.primary)),
+          const SizedBox(height: 10),
+          const Text('يرجى تمرير هاتفك على جهاز الـ NFC الخاص بالدورة أو الشركة لبدء الإعداد السريع', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+          const SizedBox(height: 40),
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton.icon(
+              onPressed: _isLoading ? null : _startNfcScan,
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              icon: _isLoading ? const SizedBox.shrink() : const Icon(Icons.wifi_tethering, color: Colors.white),
+              label: _isLoading 
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text('مسح الشريحة الآن', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+            ),
+          ),
+        ],
+      );
+    } else if (_currentStep == 1) {
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.check_circle_outline, size: 60, color: Colors.greenAccent),
+          const SizedBox(height: 20),
+          const Text('اختر اسمك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 10),
+          const Text('تم التعرف على الدورة! يرجى اختيار اسمك من القائمة وإدخال الرمز السري', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+          const SizedBox(height: 30),
+          DropdownButtonFormField<String>(
+            decoration: InputDecoration(
+              filled: true, fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+            ),
+            dropdownColor: AppColors.surface,
+            style: const TextStyle(color: Colors.white, fontFamily: 'Cairo', fontSize: 16),
+            hint: const Text('اضغط لاختيار اسمك', style: TextStyle(color: Colors.white54)),
+            value: _selectedEmployeeId,
+            items: _maskedEmployees.map((emp) {
+              return DropdownMenuItem<String>(
+                value: emp['id'],
+                child: Text(emp['masked_name']),
+              );
+            }).toList(),
+            onChanged: (val) => setState(() => _selectedEmployeeId = val),
+          ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _pinController,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 24, letterSpacing: 8, color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'الرمز السري',
+              filled: true, fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity, height: 55,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _fastTrackLogin,
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('تأكيد وتسجيل الدخول', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 30),
+          TextButton(
+            onPressed: () => setState(() => _currentStep = 2),
+            child: const Text('لم أجد اسمي! تسجيل كضيف جديد', style: TextStyle(color: Colors.amber, fontSize: 16, decoration: TextDecoration.underline)),
+          )
+        ],
+      );
+    } else {
+      // Step 2: Walk-in Form
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.person_add_alt_1, size: 60, color: Colors.amber),
+          const SizedBox(height: 20),
+          const Text('تسجيل ضيف جديد', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 10),
+          const Text('يرجى إدخال بياناتك لطلب الانضمام للدورة', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+          const SizedBox(height: 30),
+          TextField(
+            controller: _walkinNameController,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(hintText: 'الاسم الرباعي', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
+          ),
+          const SizedBox(height: 15),
+          TextField(
+            controller: _walkinPhoneController,
+            keyboardType: TextInputType.phone,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(hintText: 'رقم الجوال', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
+          ),
+          const SizedBox(height: 15),
+          TextField(
+            controller: _walkinPinController,
+            keyboardType: TextInputType.number,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(hintText: 'ابتكر رمزاً سرياً (PIN)', filled: true, fillColor: Colors.white.withOpacity(0.05), border: OutlineInputBorder(borderRadius: BorderRadius.circular(15))),
+          ),
+          const SizedBox(height: 25),
+          SizedBox(
+            width: double.infinity, height: 55,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : _submitWalkIn,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              child: _isLoading ? const CircularProgressIndicator(color: Colors.black) : const Text('إرسال الطلب', style: TextStyle(fontSize: 18, color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ),
+          const SizedBox(height: 20),
+          TextButton(
+            onPressed: () => setState(() => _currentStep = 1),
+            child: const Text('رجوع للقائمة', style: TextStyle(color: Colors.white54)),
+          )
+        ],
+      );
+    }
   }
 }

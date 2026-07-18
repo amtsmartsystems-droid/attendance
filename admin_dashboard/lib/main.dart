@@ -6,6 +6,7 @@ import 'employee_management_screen.dart';
 import 'attendance_screen.dart';
 import 'schedules_screen.dart';
 import 'leaves_screen.dart';
+import 'onboarding_screen.dart';
 
 void main() {
   runApp(const AdminDashboardApp());
@@ -51,6 +52,7 @@ class _MainScreenState extends State<MainScreen> {
     const EmployeeManagementScreen(),
     const SchedulesScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
     const LeavesScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
+    const OnboardingScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
   ];
 
   @override
@@ -92,6 +94,11 @@ class _MainScreenState extends State<MainScreen> {
                 icon: Icon(Icons.assignment_ind_outlined),
                 selectedIcon: Icon(Icons.assignment_ind, color: Color(0xFF00E5FF)),
                 label: Text('الإجازات'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.person_add_alt_1_outlined),
+                selectedIcon: Icon(Icons.person_add_alt_1, color: Color(0xFF00E5FF)),
+                label: Text('طلبات التسجيل'),
               ),
             ],
           ),
