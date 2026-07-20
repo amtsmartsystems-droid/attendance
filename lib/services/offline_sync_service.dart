@@ -21,13 +21,15 @@ class PendingRecord {
   final int? id;
   final String tagCode;
   final String employeeId;
-  final DateTime capturedAt;    // الوقت المحسوب بدقة (Device Uptime)
-  final int status;             // 0 = pending، 1 = synced، 2 = failed
+  final String deviceId;        // الجهاز اللي سجل المسحة
+  final DateTime capturedAt;
+  final int status;
 
   const PendingRecord({
     this.id,
     required this.tagCode,
     required this.employeeId,
+    required this.deviceId,
     required this.capturedAt,
     this.status = 0,
   });
@@ -35,6 +37,7 @@ class PendingRecord {
   Map<String, dynamic> toMap() => {
         'tag_code': tagCode,
         'employee_id': employeeId,
+        'device_id': deviceId,
         'captured_at': capturedAt.toIso8601String(),
         'status': status,
       };
@@ -43,6 +46,7 @@ class PendingRecord {
         id: m['id'] as int?,
         tagCode: m['tag_code'] as String,
         employeeId: m['employee_id'] as String,
+        deviceId: m['device_id'] as String? ?? '',
         capturedAt: DateTime.parse(m['captured_at'] as String),
         status: m['status'] as int? ?? 0,
       );
@@ -67,18 +71,25 @@ class OfflineSyncService {
     final dbPath = join(await getDatabasesPath(), 'amt_offline.db');
     _db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE pending_attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tag_code TEXT NOT NULL,
             employee_id TEXT NOT NULL,
+            device_id TEXT NOT NULL DEFAULT '',
             captured_at TEXT NOT NULL,
             status INTEGER DEFAULT 0
           )
         ''');
         debugPrint('[Offline] ✅ قاعدة البيانات المحلية جاهزة');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE pending_attendance ADD COLUMN device_id TEXT NOT NULL DEFAULT \"\"');
+          debugPrint('[Offline] 🔧 تم تحديث هيكل الجدول إلى v2 (إضافة device_id)');
+        }
       },
     );
     // بدء المزامنة التلقائية كل 30 ثانية
@@ -102,11 +113,13 @@ class OfflineSyncService {
   Future<int> saveLocally({
     required String tagCode,
     required String employeeId,
+    required String deviceId,
   }) async {
     if (_db == null) await initialize();
     final record = PendingRecord(
       tagCode: tagCode,
       employeeId: employeeId,
+      deviceId: deviceId,
       capturedAt: _getCaptureTime(),
     );
     final id = await _db!.insert('pending_attendance', record.toMap());
@@ -163,6 +176,7 @@ class OfflineSyncService {
         final response = await _apiService.sendAttendance(
           tagCode: record.tagCode,
           employeeId: record.employeeId,
+          deviceId: record.deviceId,   // ✅ إرسال device_id للتحقق من صحة الجهاز
           offlineTimestamp: record.capturedAt,
         );
 
@@ -177,12 +191,17 @@ class OfflineSyncService {
           debugPrint('[Offline] ✅ تمت مزامنة السجل #${record.id}');
         } else {
           debugPrint('[Offline] ⚠️ فشل رفع السجل #${record.id}: ${response.message}');
-          // إذا فشل 3 مرات نعلّمه كـ failed
-          await _db!.rawUpdate('''
-            UPDATE pending_attendance
-            SET status = CASE WHEN status >= 2 THEN 2 ELSE status END
-            WHERE id = ?
-          ''', [record.id]);
+          // إذا رفضه السيرفر بسبب جهاز ملغى ربطه — علّم السجل كـ failed
+          if (response.message?.contains('device') == true || 
+              response.message?.contains('جهاز') == true) {
+            await _db!.update(
+              'pending_attendance',
+              {'status': 2}, // failed - rejected permanently
+              where: 'id = ?',
+              whereArgs: [record.id],
+            );
+            debugPrint('[Offline] 🚫 تم رفض السجل #${record.id} نهائياً (جهاز ملغى)');
+          }
         }
       } catch (e) {
         debugPrint('[Offline] ❌ خطأ في رفع السجل #${record.id}: $e');

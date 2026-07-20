@@ -80,9 +80,10 @@ class ApiService {
 
   /// --- إرسال بيانات الحضور إلى Supabase Edge Function ---
   Future<AttendanceResponse> sendAttendance({
-    required String tagCode,   // NFC UID
+    required String tagCode,
     required String employeeId,
-    DateTime? offlineTimestamp, // ⭐ للسجلات الأوفلاين فقط
+    String? deviceId,            // ⭐ device_id لكشف التضارب عند السينك
+    DateTime? offlineTimestamp,
   }) async {
     // 1. فحص الاتصال
     if (!await hasInternetConnection()) {
@@ -111,6 +112,9 @@ class ApiService {
         'emp_id':       employeeId,
         'door_nfc_uid': tagCode,
       };
+      if (deviceId != null && deviceId.isNotEmpty) {
+        body['device_id'] = deviceId;  // ✅ لكشف التضارب في السيرفر
+      }
       if (offlineTimestamp != null) {
         body['offline_timestamp'] = offlineTimestamp.toIso8601String();
         body['is_offline_sync'] = true;

@@ -20,6 +20,7 @@ class AttendanceProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
   final SecurityService _securityService = SecurityService();
   final OfflineSyncService _offlineSync = OfflineSyncService();
+  String _deviceId = ''; // جهاز المستخدم (Device Binding ID)
 
   // --- التخزين الآمن المشفر (Android Keystore) ---
   // يحل ثغرة #7: لا يمكن قراءة البيانات حتى مع Root
@@ -99,10 +100,11 @@ class AttendanceProvider extends ChangeNotifier {
   /// --- تحميل معرف الموظف من التخزين الآمن (Android Keystore) ---
   Future<void> _loadEmployeeId() async {
     try {
-      // قراءة من Keystore المشفر بدلاً من SharedPreferences العادي
       final storedId = await _secureStorage.read(key: 'employee_id');
       _employeeId = storedId ?? 'emp_105';
-      debugPrint('[Provider] 🔑 تم تحميل معرف الموظف من Keystore: $_employeeId');
+      // ✅ تحميل device_id للتحقق من التضارب عند السينك
+      _deviceId = await _secureStorage.read(key: 'device_id') ?? '';
+      debugPrint('[Provider] 🔑 تم تحميل معرف الموظف: $_employeeId | device: $_deviceId');
       notifyListeners();
     } catch (e) {
       debugPrint('[Provider] خطأ في تحميل معرف الموظف: $e');
@@ -213,6 +215,7 @@ class AttendanceProvider extends ChangeNotifier {
     final response = await _apiService.sendAttendance(
       tagCode: tagCode,
       employeeId: _employeeId,
+      deviceId: _deviceId,    // ✅ إرسال معرف الجهاز للتحقق من عدم التضارب
     );
 
     _lastResponse = response;
@@ -239,6 +242,7 @@ class AttendanceProvider extends ChangeNotifier {
       await _offlineSync.saveLocally(
         tagCode: tagCode,
         employeeId: _employeeId,
+        deviceId: _deviceId,    // ✅ حفظ device_id مع كل سجل أوفلاين
       );
       await _refreshPendingCount();
 

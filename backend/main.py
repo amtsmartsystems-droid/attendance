@@ -608,3 +608,45 @@ def export_attendance_pdf():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# ============================================================
+# POST /api/attendance/record — ????? ?????? ?? ?????? ?? ??????
+# ============================================================
+class AttendanceRecord(BaseModel):
+    emp_id: str
+    door_nfc_uid: str
+    device_id: Optional[str] = None
+    offline_timestamp: Optional[str] = None
+    is_offline_sync: bool = False
+    nonce: Optional[str] = None
+
+@app.post('/api/attendance/record')
+def record_attendance(req: AttendanceRecord):
+    try:
+        import uuid as uuid_lib
+        emp_res = supabase.table('employees').select('*').eq('emp_id', req.emp_id).execute()
+        if not emp_res.data:
+            raise HTTPException(status_code=404, detail='?????? ??? ?????')
+        emp = emp_res.data[0]
+        if req.device_id and emp.get('is_device_bound'):
+            reg_dev = emp.get('device_id', '')
+            if reg_dev and reg_dev != req.device_id:
+                raise HTTPException(status_code=403, detail='????? ??????: ?????? ?? ????? ?????? ??????. ????? ?? ???????.')
+        if emp.get('status') == 'pending':
+            raise HTTPException(status_code=403, detail='?????? ?? ?????? ???? ???')
+        door_res = supabase.table('doors').select('*').eq('nfc_uid', req.door_nfc_uid).execute()
+        if not door_res.data:
+            raise HTTPException(status_code=404, detail='????? ??? ????')
+        door = door_res.data[0]
+        last_log = supabase.table('attendance_logs').select('movement_type').eq('employee_id', emp['id']).order('recorded_at', desc=True).limit(1).execute()
+        last_type = last_log.data[0]['movement_type'] if last_log.data else '????'
+        movement = '????' if last_type == '????' else '????'
+        record_time = req.offline_timestamp if req.offline_timestamp else datetime.now(timezone.utc).isoformat()
+        nonce_val = req.nonce or str(uuid_lib.uuid4())
+        supabase.table('attendance_logs').insert({'employee_id': emp['id'], 'door_id': door['id'], 'recorded_at': record_time, 'movement_type': movement, 'nonce': nonce_val, 'device_info': {'device_id': req.device_id, 'is_offline': req.is_offline_sync}}).execute()
+        return {'success': True, 'movement_type': movement, 'employee_name': emp['full_name'], 'door_name': door['door_name'], 'message': f'?? ????? {movement} ?????'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
