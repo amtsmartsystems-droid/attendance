@@ -178,7 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final resp = await http.get(Uri.parse('$_backendUrl/api/dashboard/stats')).timeout(const Duration(seconds: 20));
+      final resp = await http.get(Uri.parse('$_backendUrl/api/stats')).timeout(const Duration(seconds: 20));
       if (resp.statusCode == 200) {
         setState(() { _stats = jsonDecode(resp.body); _loading = false; });
       } else {
