@@ -658,3 +658,16 @@ def record_attendance(req: AttendanceRecord):
 
 
 
+
+
+from fastapi.staticfiles import StaticFiles
+import os
+
+admin_path = os.path.join(os.path.dirname(__file__), "admin_web")
+if os.path.exists(admin_path):
+    app.mount("/admin", StaticFiles(directory=admin_path, html=True), name="admin")
+else:
+    @app.get("/admin")
+    def admin_not_found():
+        return {"detail": "Admin Dashboard Not Found at " + admin_path}
+
