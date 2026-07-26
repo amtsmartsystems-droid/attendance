@@ -58,7 +58,7 @@ class AttendanceScreen extends StatefulWidget {
 
 class _AttendanceScreenState extends State<AttendanceScreen>
     with SingleTickerProviderStateMixin {
-  static const String _apiUrl = 'http://127.0.0.1:8000/api';
+  static const String _apiUrl = 'https://attendance-yty9.onrender.com/api';
 
   // Live Feed
   List<AttendanceLog> _liveFeed = [];

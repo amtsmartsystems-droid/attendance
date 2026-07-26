@@ -55,7 +55,7 @@ class _LoginScreenState extends State<LoginScreen> {
               _isLoading = false;
             });
           } else {
-            _showError('هذه البوابة غير مسجلة أو غير صالحة للربط');
+            _showError('هذه البوابة غير مسجلة. كود الشريحة هو: $_scannedNfcUid');
             setState(() => _isLoading = false);
           }
         } catch (e) {

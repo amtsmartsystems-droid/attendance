@@ -4,7 +4,7 @@ import 'api_service.dart';
 
 class AdminService {
   // We will call the new edge function 'assign-door'
-  static const String _assignDoorUrl =
+  static String get _assignDoorUrl =>
       '${SupabaseConfig.url}/functions/v1/assign-door';
 
   static Future<bool> assignNewDoor({

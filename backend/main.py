@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+﻿from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from supabase import create_client, Client
@@ -29,7 +29,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 # استيراد المسارات الجديدة (Routers)
-from routers import schedules, leaves, onboarding
+from routers import schedules, leaves, onboarding, courses
 
 # ============================================================
 class EmployeeCreate(BaseModel):
@@ -57,6 +57,12 @@ app.add_middleware(
 app.include_router(schedules.router)
 app.include_router(leaves.router)
 app.include_router(onboarding.router)
+app.include_router(courses.router)
+
+# Keep-Alive endpoint لمنع نوم السيرفر على Render
+@app.get("/ping")
+def ping():
+    return {"status": "alive", "message": "AMT Attendance Server is running"}
 
 # ── Supabase ─────────────────────────────────────────────
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -610,7 +616,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 # ============================================================
-# POST /api/attendance/record � ????? ?????? ?? ?????? ?? ??????
+# POST /api/attendance/record � ????? ?????? ?? ?????? ?? ??????
 # ============================================================
 class AttendanceRecord(BaseModel):
     emp_id: str
@@ -649,4 +655,6 @@ def record_attendance(req: AttendanceRecord):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
