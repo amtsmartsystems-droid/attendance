@@ -1,4 +1,4 @@
-﻿"""
+"""
 ملف: backend/routers/courses.py
 الوصف: API كاملة لإدارة الدورات التدريبية مع نظام عزل البيانات
 """
@@ -44,23 +44,31 @@ class AddDoorRequest(BaseModel):
 
 @router.post("/{course_id}/add-door")
 def add_new_door(course_id: str, req: AddDoorRequest):
-    # 1. إدراج البوابة الجديدة وربطها
-    try:
-        res = supabase.table("doors").insert({
+    # أولاً: هل البطاقة موجودة مسبقاً في النظام؟
+    existing = supabase.table("doors").select("*").eq("nfc_uid", req.nfc_uid).execute()
+    
+    if existing.data:
+        # البطاقة موجودة — نحدّث اسمها ونربطها بالدورة
+        res = supabase.table("doors").update({
             "door_name": req.door_name,
-            "nfc_uid": req.nfc_uid,
             "course_id": course_id
-        }).execute()
-        return {"message": "تم إضافة البوابة وربطها بنجاح", "door": res.data[0]}
-    except Exception as e:
-        # إذا كانت البطاقة موجودة مسبقاً، نقوم بتحديثها فقط
-        if "duplicate key value" in str(e) or "23505" in str(e):
-            res = supabase.table("doors").update({
+        }).eq("nfc_uid", req.nfc_uid).execute()
+        return {"message": "تم تحديث البوابة وربطها بالدورة بنجاح", "door": res.data[0]}
+    else:
+        # بطاقة جديدة — نُدرجها مع door_id تلقائي
+        import uuid as uuid_lib
+        auto_door_id = f"DOOR_{req.nfc_uid.replace(':', '').upper()[:8]}"
+        try:
+            res = supabase.table("doors").insert({
+                "door_id": auto_door_id,
                 "door_name": req.door_name,
-                "course_id": course_id
-            }).eq("nfc_uid", req.nfc_uid).execute()
-            return {"message": "تم تحديث البوابة وربطها بنجاح", "door": res.data[0]}
-        raise HTTPException(status_code=400, detail=str(e))
+                "nfc_uid": req.nfc_uid,
+                "course_id": course_id,
+                "is_active": True
+            }).execute()
+            return {"message": "تم إضافة البوابة الجديدة وربطها بنجاح", "door": res.data[0]}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
 class AssignDoorRequest(BaseModel):
     door_id: str   # UUID الباب
