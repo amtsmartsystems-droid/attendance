@@ -2,13 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:html' as html;
+import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'employee_management_screen.dart';
 import 'attendance_screen.dart';
 import 'schedules_screen.dart';
 import 'leaves_screen.dart';
 import 'onboarding_screen.dart';
+import 'courses_screen.dart';
+import 'login_screen.dart';
 
-void main() {
+const _backendUrl = String.fromEnvironment('BACKEND_URL', defaultValue: 'https://attendance-yty9.onrender.com');
+const _supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://oiyoeftvpwpiwovqqhum.supabase.co');
+const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'sb_publishable_gg37Prs1Z7HW9jKRIVnelQ_8M9Oiz8T');
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: _supabaseUrl,
+    anonKey: _supabaseAnonKey,
+  );
+
   runApp(const AdminDashboardApp());
 }
 
@@ -19,40 +35,64 @@ class AdminDashboardApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'لوحة تحكم AMT',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        primaryColor: const Color(0xFF00E5FF),
-        scaffoldBackgroundColor: const Color(0xFF0B101E),
+        primaryColor: const Color(0xFF00B4D8),
+        scaffoldBackgroundColor: const Color(0xFF0A0E21),
+        textTheme: GoogleFonts.cairoTextTheme(ThemeData.dark().textTheme),
         fontFamily: 'Cairo',
       ),
-      home: const MainScreen(),
+      home: const AuthGate(),
       builder: (context, child) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: child!,
-        );
+        return Directionality(textDirection: TextDirection.rtl, child: child!);
       },
     );
   }
 }
 
+// ─── بوابة المصادقة — تتحقق من حالة الدخول ────────────────────────────────
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) {
+          return const MainScreen();
+        } else {
+          return const LoginScreen();
+        }
+      },
+    );
+  }
+}
+
+// ─── الشاشة الرئيسية بعد الدخول ──────────────────────────────────────────
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
-
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-  
+
   final List<Widget> _screens = [
     const DashboardScreen(),
+    const CoursesScreen(),          // ✅ جديد
     const AttendanceScreen(),
     const EmployeeManagementScreen(),
-    const SchedulesScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
-    const LeavesScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
-    const OnboardingScreen(backendUrl: 'https://attendance-yty9.onrender.com'),
+    const OnboardingScreen(backendUrl: _backendUrl),
+    const SchedulesScreen(backendUrl: _backendUrl),
+    const LeavesScreen(backendUrl: _backendUrl),
   ];
 
   @override
@@ -60,276 +100,152 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       body: Row(
         children: [
-          NavigationRail(
-            backgroundColor: const Color(0xFF162032),
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (int index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-            labelType: NavigationRailLabelType.all,
-            destinations: const [
-              NavigationRailDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard, color: Color(0xFF00E5FF)),
-                label: Text('الإحصائيات'),
+          // ─ القائمة الجانبية ─
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF0D1B2A),
+              border: Border(right: BorderSide(color: Color(0xFF1A2B4A), width: 1)),
+            ),
+            child: NavigationRail(
+              backgroundColor: Colors.transparent,
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+              labelType: NavigationRailLabelType.all,
+              selectedIconTheme: const IconThemeData(color: Color(0xFF00B4D8)),
+              unselectedIconTheme: const IconThemeData(color: Colors.white38),
+              selectedLabelTextStyle: GoogleFonts.cairo(color: const Color(0xFF00B4D8), fontWeight: FontWeight.bold, fontSize: 11),
+              unselectedLabelTextStyle: GoogleFonts.cairo(color: Colors.white38, fontSize: 11),
+              leading: Padding(
+                padding: const EdgeInsets.only(bottom: 16, top: 8),
+                child: Column(children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(shape: BoxShape.circle, gradient: const LinearGradient(colors: [Color(0xFF00B4D8), Color(0xFF0077B6)]),
+                    boxShadow: [BoxShadow(color: const Color(0xFF00B4D8).withOpacity(0.4), blurRadius: 12)]),
+                    child: const Icon(Icons.nfc, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(height: 6),
+                  Text('AMT', style: GoogleFonts.cairo(color: const Color(0xFF00B4D8), fontWeight: FontWeight.bold, fontSize: 13)),
+                ]),
               ),
-              NavigationRailDestination(
-                icon: Icon(Icons.fact_check_outlined),
-                selectedIcon: Icon(Icons.fact_check, color: Color(0xFF00E5FF)),
-                label: Text('سجل الحضور'),
+              trailing: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: IconButton(
+                  icon: const Icon(Icons.logout, color: Colors.white38),
+                  tooltip: 'تسجيل الخروج',
+                  onPressed: () async {
+                    await Supabase.instance.client.auth.signOut();
+                  },
+                ),
               ),
-              NavigationRailDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people, color: Color(0xFF00E5FF)),
-                label: Text('الموظفين'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.schedule_outlined),
-                selectedIcon: Icon(Icons.schedule, color: Color(0xFF00E5FF)),
-                label: Text('الجداول'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.assignment_ind_outlined),
-                selectedIcon: Icon(Icons.assignment_ind, color: Color(0xFF00E5FF)),
-                label: Text('الإجازات'),
-              ),
-              NavigationRailDestination(
-                icon: Icon(Icons.person_add_alt_1_outlined),
-                selectedIcon: Icon(Icons.person_add_alt_1, color: Color(0xFF00E5FF)),
-                label: Text('طلبات التسجيل'),
-              ),
-            ],
+              destinations: const [
+                NavigationRailDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: Text('الإحصائيات')),
+                NavigationRailDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: Text('الدورات')),
+                NavigationRailDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: Text('الحضور')),
+                NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('المتدربون')),
+                NavigationRailDestination(icon: Icon(Icons.app_registration_outlined), selectedIcon: Icon(Icons.app_registration), label: Text('التسجيل')),
+                NavigationRailDestination(icon: Icon(Icons.schedule_outlined), selectedIcon: Icon(Icons.schedule), label: Text('الجداول')),
+                NavigationRailDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: Text('الإجازات')),
+              ],
+            ),
           ),
-          const VerticalDivider(thickness: 1, width: 1, color: Color(0xFF2C3E50)),
-          Expanded(
-            child: _screens[_selectedIndex],
-          ),
+          // ─ المحتوى ─
+          Expanded(child: _screens[_selectedIndex]),
         ],
       ),
     );
   }
 }
 
+// ─── شاشة الإحصائيات الرئيسية ────────────────────────────────────────────
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
-
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final String apiUrl = 'http://localhost:8000/api';
-  bool isLoading = true;
-  Map<String, dynamic>? stats;
-  List<dynamic>? attendanceLogs;
+  Map<String, dynamic>? _stats;
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    fetchData();
+    _load();
   }
 
-  Future<void> fetchData() async {
-    setState(() => isLoading = true);
+  Future<void> _load() async {
+    setState(() { _loading = true; _error = null; });
     try {
-      final statsRes = await http.get(Uri.parse('$apiUrl/stats'));
-      final logsRes = await http.get(Uri.parse('$apiUrl/attendance'));
-
-      if (statsRes.statusCode == 200 && logsRes.statusCode == 200) {
-        setState(() {
-          stats = jsonDecode(statsRes.body)['data'];
-          attendanceLogs = jsonDecode(logsRes.body)['data'];
-          isLoading = false;
-        });
+      final resp = await http.get(Uri.parse('$_backendUrl/api/dashboard/stats')).timeout(const Duration(seconds: 20));
+      if (resp.statusCode == 200) {
+        setState(() { _stats = jsonDecode(resp.body); _loading = false; });
       } else {
-        setState(() => isLoading = false);
+        setState(() { _error = 'فشل التحميل (${resp.statusCode})'; _loading = false; });
       }
     } catch (e) {
-      print('Error fetching data: $e');
-      setState(() => isLoading = false);
+      setState(() { _error = 'تعذّر الاتصال بالسيرفر'; _loading = false; });
     }
-  }
-
-  void exportExcel() {
-    // Open the backend URL to download the file directly in the browser
-    html.window.open('$apiUrl/reports/excel', 'Download');
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('لوحة تحكم إدارة الحضور', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF162032),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Stack(
-              children: [
-                const Icon(Icons.notifications),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
-                    child: const Text('2', style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                  ),
-                )
-              ],
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('أحمد محمد تأخر عن الدوام | محمد علي قدم طلب إجازة')),
-              );
-            },
-            tooltip: 'الإشعارات',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: fetchData,
-            tooltip: 'تحديث البيانات',
-          ),
-          const SizedBox(width: 20),
-        ],
-      ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00E5FF)))
-          : Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Stats Row
-                  Row(
+      backgroundColor: const Color(0xFF0A0E21),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF00B4D8)))
+          : _error != null
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.error_outline, color: Color(0xFFE74C3C), size: 60),
+                  const SizedBox(height: 16),
+                  Text(_error!, style: GoogleFonts.cairo(color: Colors.white70)),
+                  const SizedBox(height: 16),
+                  ElevatedButton(onPressed: _load, style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00B4D8)), child: Text('إعادة المحاولة', style: GoogleFonts.cairo())),
+                ]))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildStatCard('إجمالي الموظفين', stats?['total_employees']?.toString() ?? '0', Icons.people),
-                      const SizedBox(width: 20),
-                      _buildStatCard('حضور اليوم', stats?['today_attendance']?.toString() ?? '0', Icons.how_to_reg),
-                      const SizedBox(width: 20),
-                      _buildStatCard('البوابات النشطة', stats?['total_doors']?.toString() ?? '0', Icons.door_front_door),
-                    ],
-                  ),
-                  const SizedBox(height: 30),
-                  
-                  // Header and Export Button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'سجل الحضور الحي',
-                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: exportExcel,
-                        icon: const Icon(Icons.download_rounded),
-                        label: const Text('تصدير Excel'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00E5FF),
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                        ),
+                      Text('مرحباً 👋  لوحة التحكم الرئيسية', style: GoogleFonts.cairo(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                      Text('إليك نظرة عامة على النظام اليوم', style: GoogleFonts.cairo(color: Colors.white38, fontSize: 14)),
+                      const SizedBox(height: 32),
+                      Wrap(
+                        spacing: 16, runSpacing: 16,
+                        children: [
+                          _statCard('إجمالي المتدربين', '${_stats?['total_employees'] ?? 0}', Icons.people, const Color(0xFF00B4D8)),
+                          _statCard('حضور اليوم', '${_stats?['today_attendance'] ?? 0}', Icons.how_to_reg, const Color(0xFF2ECC71)),
+                          _statCard('إجمالي البوابات', '${_stats?['total_doors'] ?? 0}', Icons.door_sliding_outlined, const Color(0xFFFFC300)),
+                          _statCard('الدورات النشطة', '${_stats?['total_courses'] ?? 0}', Icons.school, const Color(0xFF9B59B6)),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-
-                  // Data Table
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF162032),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: SingleChildScrollView(
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            columns: const [
-                              DataColumn(label: Text('الموظف')),
-                              DataColumn(label: Text('رقم الوظيفة')),
-                              DataColumn(label: Text('نوع الحركة')),
-                              DataColumn(label: Text('البوابة')),
-                              DataColumn(label: Text('الوقت والتاريخ')),
-                            ],
-                            rows: (attendanceLogs ?? []).map((log) {
-                              final emp = log['employees'] ?? {};
-                              final door = log['doors'] ?? {};
-                              final type = log['movement_type'] ?? '';
-                              final time = log['recorded_at'] != null 
-                                ? DateTime.parse(log['recorded_at']).toLocal().toString().substring(0, 19)
-                                : '';
-                              
-                              return DataRow(cells: [
-                                DataCell(Text(emp['full_name'] ?? 'غير معروف')),
-                                DataCell(Text(emp['emp_id'] ?? '-')),
-                                DataCell(
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: type == 'دخول' ? Colors.green.withOpacity(0.2) : Colors.orange.withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      type,
-                                      style: TextStyle(
-                                        color: type == 'دخول' ? Colors.greenAccent : Colors.orangeAccent,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                DataCell(Text(door['door_name'] ?? 'غير معروف')),
-                                DataCell(Text(time)),
-                              ]);
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: const Color(0xFF162032),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2C3E50)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: const Color(0xFF00E5FF), size: 32),
-            ),
-            const SizedBox(width: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.white70, fontSize: 16)),
-                const SizedBox(height: 8),
-                Text(value, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ],
-        ),
+  Widget _statCard(String label, String value, IconData icon, Color color) {
+    return Container(
+      width: 200, height: 120,
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2340),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 12)],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Icon(icon, color: color, size: 28),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value, style: GoogleFonts.cairo(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            Text(label, style: GoogleFonts.cairo(color: Colors.white54, fontSize: 12)),
+          ]),
+        ],
       ),
     );
   }

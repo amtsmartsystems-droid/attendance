@@ -44,14 +44,20 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _checkLoginStatus() async {
     // الانتظار للأنيميشن
     await Future.delayed(const Duration(milliseconds: 3200));
-    
+
     if (!mounted) return;
-    
-    final deviceId = await _storage.read(key: 'device_id');
-    debugPrint('========= DEVICE ID CHECK =========');
-    debugPrint('deviceId: $deviceId');
-    
-    if (deviceId != null && deviceId.isNotEmpty) {
+
+    // ✅ التحقق من وجود device_id وemp_id معاً لمنع تسجيل الخروج عند تحديث APK
+    final storage = const FlutterSecureStorage(
+      aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    );
+    final deviceId = await storage.read(key: 'device_id');
+    final empId = await storage.read(key: 'emp_id');
+
+    debugPrint('========= LOGIN CHECK =========');
+    debugPrint('deviceId: $deviceId | empId: $empId');
+
+    if (deviceId != null && deviceId.isNotEmpty && empId != null && empId.isNotEmpty) {
       Navigator.pushReplacementNamed(context, '/home');
     } else {
       Navigator.pushReplacementNamed(context, '/login');

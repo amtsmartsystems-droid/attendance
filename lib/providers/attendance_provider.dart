@@ -100,7 +100,7 @@ class AttendanceProvider extends ChangeNotifier {
   /// --- تحميل معرف الموظف من التخزين الآمن (Android Keystore) ---
   Future<void> _loadEmployeeId() async {
     try {
-      final storedId = await _secureStorage.read(key: 'employee_id');
+      final storedId = await _secureStorage.read(key: 'emp_id');
       _employeeId = storedId ?? 'emp_105';
       // ✅ تحميل device_id للتحقق من التضارب عند السينك
       _deviceId = await _secureStorage.read(key: 'device_id') ?? '';
@@ -115,7 +115,7 @@ class AttendanceProvider extends ChangeNotifier {
   Future<void> saveEmployeeId(String id) async {
     try {
       // حفظ في Keystore المشفر — لا يمكن قراءته حتى مع Root
-      await _secureStorage.write(key: 'employee_id', value: id);
+      await _secureStorage.write(key: 'emp_id', value: id);
       _employeeId = id;
       debugPrint('[Provider] 🔑 تم حفظ معرف الموظف في Keystore: $id');
       notifyListeners();
@@ -236,7 +236,11 @@ class AttendanceProvider extends ChangeNotifier {
     final isNetworkError = response.message.contains('إنترنت') ||
         response.message.contains('اتصال') ||
         response.message.contains('Timeout') ||
-        response.message.contains('انتهت مهلة');
+        response.message.contains('انتهت مهلة') ||
+        response.message.toLowerCase().contains('socketexception') ||
+        response.message.toLowerCase().contains('clientexception') ||
+        response.message.toLowerCase().contains('failed host lookup') ||
+        response.message.contains('غير متوقع');
 
     if (isNetworkError) {
       await _offlineSync.saveLocally(

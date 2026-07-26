@@ -15,20 +15,25 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _storage = const FlutterSecureStorage();
+  final _storage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
   bool _isLoading = false;
-  
+
   // State 0: Scan NFC, State 1: Select Name, State 2: Walk-in Form
   int _currentStep = 0;
-  
+
   // Scanned Tag Info
   String? _scannedNfcUid;
   List<dynamic> _maskedEmployees = [];
-  
+
+  // ✅ بيانات الدورة المرتبطة بالـ NFC
+  Map<String, dynamic>? _courseInfo;
+
   // Fast Track Info
   String? _selectedEmployeeId;
   final _pinController = TextEditingController();
-  
+
   // Walk-in Form Info
   final _walkinNameController = TextEditingController();
   final _walkinPhoneController = TextEditingController();
@@ -36,22 +41,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _startNfcScan() async {
     setState(() => _isLoading = true);
-    
+
     await NfcService().startNfcSession(
       onSuccess: (result) async {
         if (result.tagCode == null) return;
         _scannedNfcUid = result.tagCode;
-        
+
         try {
           final response = await http.get(
             Uri.parse('${AppConfig.backendUrl}/api/onboarding/list/$_scannedNfcUid'),
-          );
-          
+          ).timeout(const Duration(seconds: 15));
+
           if (response.statusCode == 200) {
             final data = jsonDecode(response.body);
             setState(() {
               _maskedEmployees = data['masked_employees'] ?? [];
-              _currentStep = 1; // Move to Select Name
+              _courseInfo = data['course'];   // ✅ حفظ بيانات الدورة
+              _currentStep = 1;
               _isLoading = false;
             });
           } else {
@@ -72,10 +78,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _fastTrackLogin() async {
     if (_selectedEmployeeId == null || _pinController.text.isEmpty) return;
-    
+
     setState(() => _isLoading = true);
     final deviceId = _generateDeviceId();
-    
+
     try {
       final response = await http.post(
         Uri.parse('${AppConfig.backendUrl}/api/onboarding/fast-track'),
@@ -84,8 +90,9 @@ class _LoginScreenState extends State<LoginScreen> {
           'employee_id': _selectedEmployeeId,
           'pin_code': _pinController.text.trim(),
           'device_id': deviceId,
+          'course_id': _courseInfo?['id'],   // ✅ إرسال course_id
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
 
@@ -95,7 +102,12 @@ class _LoginScreenState extends State<LoginScreen> {
         await _storage.write(key: 'employee_uuid', value: emp['id']);
         await _storage.write(key: 'full_name', value: emp['full_name']);
         await _storage.write(key: 'device_id', value: deviceId);
-        
+        // ✅ حفظ بيانات الدورة
+        if (_courseInfo != null) {
+          await _storage.write(key: 'course_id', value: _courseInfo!['id'] ?? '');
+          await _storage.write(key: 'course_title', value: _courseInfo!['title'] ?? '');
+        }
+
         if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/home');
       } else {
@@ -113,10 +125,10 @@ class _LoginScreenState extends State<LoginScreen> {
       _showError('يرجى تعبئة جميع الحقول');
       return;
     }
-    
+
     setState(() => _isLoading = true);
     final deviceId = _generateDeviceId();
-    
+
     try {
       final response = await http.post(
         Uri.parse('${AppConfig.backendUrl}/api/onboarding/walk-in'),
@@ -125,10 +137,11 @@ class _LoginScreenState extends State<LoginScreen> {
           'full_name': _walkinNameController.text.trim(),
           'phone_number': _walkinPhoneController.text.trim(),
           'pin_code': _walkinPinController.text.trim(),
-          'department': 'Walk-in / Guest',
+          'department': _courseInfo?['title'] ?? 'Walk-in / Guest',
           'device_id': deviceId,
+          'course_id': _courseInfo?['id'],   // ✅ إرسال course_id
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
 
@@ -138,9 +151,13 @@ class _LoginScreenState extends State<LoginScreen> {
         await _storage.write(key: 'employee_uuid', value: emp['id']);
         await _storage.write(key: 'full_name', value: emp['full_name']);
         await _storage.write(key: 'device_id', value: deviceId);
-        
+        // ✅ حفظ بيانات الدورة
+        if (_courseInfo != null) {
+          await _storage.write(key: 'course_id', value: _courseInfo!['id'] ?? '');
+          await _storage.write(key: 'course_title', value: _courseInfo!['title'] ?? '');
+        }
+
         if (!mounted) return;
-        _showSuccess('تم إرسال طلبك للإدارة. يمكنك تسجيل الحضور فور الموافقة عليك!');
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         _showError(data['detail'] ?? 'خطأ في إرسال الطلب');
@@ -207,7 +224,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: _isLoading ? null : _startNfcScan,
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
               icon: _isLoading ? const SizedBox.shrink() : const Icon(Icons.wifi_tethering, color: Colors.white),
-              label: _isLoading 
+              label: _isLoading
                   ? const CircularProgressIndicator(color: Colors.white)
                   : const Text('مسح الشريحة الآن', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
             ),
@@ -220,10 +237,36 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           const Icon(Icons.check_circle_outline, size: 60, color: Colors.greenAccent),
           const SizedBox(height: 20),
-          const Text('اختر اسمك', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
-          const SizedBox(height: 10),
+          // ✅ عرض اسم الدورة إذا كانت موجودة
+          if (_courseInfo != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    _courseInfo!['title'] ?? 'دورة تدريبية',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (_courseInfo!['trainer_name'] != null)
+                    Text(
+                      _courseInfo!['trainer_name'],
+                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          const Text('اختر اسمك', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+          const SizedBox(height: 8),
           const Text('تم التعرف على الدورة! يرجى اختيار اسمك من القائمة وإدخال الرمز السري', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
-          const SizedBox(height: 30),
+          const SizedBox(height: 24),
           DropdownButtonFormField<String>(
             decoration: InputDecoration(
               filled: true, fillColor: Colors.white.withOpacity(0.05),
@@ -276,9 +319,16 @@ class _LoginScreenState extends State<LoginScreen> {
         children: [
           const Icon(Icons.person_add_alt_1, size: 60, color: Colors.amber),
           const SizedBox(height: 20),
-          const Text('تسجيل ضيف جديد', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+          const Text('تسجيل متدرب جديد', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
           const SizedBox(height: 10),
-          const Text('يرجى إدخال بياناتك لطلب الانضمام للدورة', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+          if (_courseInfo != null)
+            Text(
+              'سيتم تسجيلك في: ${_courseInfo!['title'] ?? ''}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.bold),
+            ),
+          const SizedBox(height: 8),
+          const Text('يرجى إدخال بياناتك للانضمام للدورة', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 30),
           TextField(
             controller: _walkinNameController,
@@ -305,7 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
             child: ElevatedButton(
               onPressed: _isLoading ? null : _submitWalkIn,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-              child: _isLoading ? const CircularProgressIndicator(color: Colors.black) : const Text('إرسال الطلب', style: TextStyle(fontSize: 18, color: Colors.black, fontWeight: FontWeight.bold)),
+              child: _isLoading ? const CircularProgressIndicator(color: Colors.black) : const Text('انضم للدورة الآن', style: TextStyle(fontSize: 18, color: Colors.black, fontWeight: FontWeight.bold)),
             ),
           ),
           const SizedBox(height: 20),

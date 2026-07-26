@@ -165,7 +165,7 @@ class ApiService {
       return AttendanceResponse.error('فشل الاتصال — تحقق من الإنترنت');
     } catch (e) {
       debugPrint('[API] خطأ: $e');
-      return AttendanceResponse.error('خطأ غير متوقع: ${e.toString()}');
+      return AttendanceResponse.error('خطأ في الاتصال بالشبكة: ${e.toString()}');
     }
   }
 }
